@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZeroState - Postman to GetX Generator</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>🚀 ZeroState</h1>
+      <p>Transform your Postman collections into production-ready Flutter GetX API layers with repositories, controllers, and response models following your project structure.</p>
+    </div>
+
+    <!-- Top Grid Section -->
+    <div class="top-grid">
+      <!-- Upload Postman Collection -->
+      <div class="grid-card">
+        <h3>📤 Postman Collection</h3>
+        <div class="upload-area-small" id="uploadArea">
+          <div class="upload-icon-small">📄</div>
+          <p>Drop JSON or click to browse</p>
+          <input type="file" id="fileInput" class="file-input" accept=".json" />
+        </div>
+      </div>
+
+      <!-- View Structure -->
+      <div class="grid-card clickable-card" onclick="openStructureView()">
+        <h3>📋 View Code Structure</h3>
+        <div class="info-area">
+          <div class="info-icon">👁️</div>
+          <p>Click to view sample code files</p>
+        </div>
+      </div>
+
+      <!-- Stats Card -->
+      <div class="grid-card stats-card hidden" id="statsCard">
+        <h3>📊 API Statistics</h3>
+        <div class="stats-compact">
+          <div class="stat-row">
+            <span class="stat-label-compact">Total APIs:</span>
+            <span class="stat-value-compact" id="totalApis">0</span>
+          </div>
+          <div class="stat-row-grid">
+            <div class="stat-mini">
+              <span class="stat-label-mini">GET</span>
+              <span class="stat-value-mini" id="getCount">0</span>
+            </div>
+            <div class="stat-mini">
+              <span class="stat-label-mini">POST</span>
+              <span class="stat-value-mini" id="postCount">0</span>
+            </div>
+            <div class="stat-mini">
+              <span class="stat-label-mini">PUT</span>
+              <span class="stat-value-mini" id="putCount">0</span>
+            </div>
+            <div class="stat-mini">
+              <span class="stat-label-mini">DELETE</span>
+              <span class="stat-value-mini" id="deleteCount">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Generate Code Card -->
+      <div class="grid-card generate-card hidden" id="generateCard">
+        <h3>✨ Generate Code</h3>
+        <div class="generate-area">
+          <p>Configure your APIs below and generate your GetX files</p>
+          <button class="btn btn-generate" onclick="generateCode()">Generate GetX Code</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls hidden" id="controls">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Search APIs by name or URL..." />
+      </div>
+    </div>
+
+    <!-- API List -->
+    <div id="apiList">
+      <div class="empty-state">
+        <div class="empty-state-icon">📋</div>
+        <h3>No Collection Loaded</h3>
+        <p>Upload a Postman collection to get started</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
