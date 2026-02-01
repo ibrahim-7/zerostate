@@ -669,4 +669,61 @@ body {
   letter-spacing: 0.5px;
   border-bottom: 2px solid #3a4556;
   padding-bottom: 8px;
+}/* Add this to your existing styles.css */
+
+/* Success Toast Notification */
+.success-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px 24px;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+  transform: translateX(400px);
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  opacity: 0;
+  z-index: 10000;
+  max-width: 400px;
+}
+
+.success-toast.show {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.success-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.success-icon {
+  font-size: 32px;
+  animation: successPop 0.5s ease;
+}
+
+@keyframes successPop {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.success-text strong {
+  display: block;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.success-text p {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+/* Loading state for generate button */
+.btn-generate:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

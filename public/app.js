@@ -358,6 +358,11 @@ function updateConfigWithRerender(element, index) {
 async function generateCode() {
   console.log('Generating GetX Controllers and Repositories...');
   
+  const generateBtn = document.querySelector('.btn-generate');
+  const originalText = generateBtn.textContent;
+  generateBtn.disabled = true;
+  generateBtn.textContent = '⏳ Generating ZIP...';
+  
   try {
     const response = await fetch('/generate', {
       method: 'POST',
@@ -373,34 +378,56 @@ async function generateCode() {
       throw new Error(`Generation failed: ${response.status}`);
     }
 
-    const result = await response.json();
+    // Get the blob from response
+    const blob = await response.blob();
     
-    if (result.files) {
-      Object.keys(result.files).forEach(filename => {
-        downloadFile(filename, result.files[filename]);
-      });
-      
-      alert(`✨ ${result.message}\nFiles downloaded successfully!`);
-    }
+    // Create download link
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `zerostate_generated_${Date.now()}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
     
-    console.log('Generation result:', result);
+    // Show success message
+    showSuccessMessage();
     
   } catch (error) {
     console.error('Generation error:', error);
-    alert(`Generation failed: ${error.message}`);
+    alert(`❌ Generation failed: ${error.message}`);
+  } finally {
+    generateBtn.disabled = false;
+    generateBtn.textContent = originalText;
   }
 }
 
-function downloadFile(filename, content) {
-  const blob = new Blob([content], { type: 'text/plain' });
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.URL.revokeObjectURL(url);
+function showSuccessMessage() {
+  const successDiv = document.createElement('div');
+  successDiv.className = 'success-toast';
+  successDiv.innerHTML = `
+    <div class="success-content">
+      <span class="success-icon">✅</span>
+      <div class="success-text">
+        <strong>Code Generated Successfully!</strong>
+        <p>Your ZIP file has been downloaded</p>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(successDiv);
+  
+  setTimeout(() => {
+    successDiv.classList.add('show');
+  }, 100);
+  
+  setTimeout(() => {
+    successDiv.classList.remove('show');
+    setTimeout(() => {
+      document.body.removeChild(successDiv);
+    }, 300);
+  }, 3000);
 }
 
 document.addEventListener('DOMContentLoaded', initializeEventListeners);

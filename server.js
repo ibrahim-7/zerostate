@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
+const archiver = require('archiver');
 
 const app = express();
 const port = 3000;
@@ -30,19 +31,41 @@ const upload = multer({ storage: storage });
 
 // Helper Functions
 function toSmallCamelCase(str) {
+  // First, handle special cases with consecutive capitals (OTP, API, etc.)
+  str = str.replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2');
+  
   return str
     .replace(/[^a-zA-Z0-9]+(.)/g, (match, chr) => chr.toUpperCase())
-    .replace(/^./, (chr) => chr.toLowerCase());
+    .replace(/^./, (chr) => chr.toLowerCase())
+    // Handle consecutive capitals: phoneOTP -> phoneOtp
+    .replace(/([a-z])([A-Z]+)([A-Z][a-z])/g, (match, lower, caps, capLower) => {
+      return lower + caps.charAt(0).toUpperCase() + caps.slice(1).toLowerCase() + capLower;
+    })
+    .replace(/([a-z])([A-Z]+)$/g, (match, lower, caps) => {
+      return lower + caps.charAt(0).toUpperCase() + caps.slice(1).toLowerCase();
+    });
 }
 
 function toCleanVariableName(str) {
-  return str
-    .replace(/[^a-zA-Z0-9\s]/g, '')
+  // Remove special characters except spaces and alphanumeric
+  let cleaned = str.replace(/[^a-zA-Z0-9\s]/g, ' ');
+  
+  // Handle consecutive capitals (OTP, API, etc.)
+  cleaned = cleaned.replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+  
+  return cleaned
     .trim()
     .split(/\s+/)
     .map((word, index) => {
+      // First word is lowercase
       if (index === 0) {
         return word.toLowerCase();
+      }
+      // Subsequent words: capitalize first letter, lowercase rest
+      // But handle all-caps words (OTP, API) specially
+      if (word.length <= 3 && word === word.toUpperCase()) {
+        // Short all-caps: OTP -> Otp, API -> Api
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
       }
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     })
@@ -273,9 +296,10 @@ function generateAuthController(apis) {
   const repoClassName = 'AuthRepo';
   
   let code = `import 'package:get/get.dart';
-import 'package:hudood/constants/app_errors.dart';
-import 'package:hudood/controllers/base_controller.dart';
-import 'auth_repository.dart';
+import 'package:mechanica/constants/app_errors.dart';
+import 'package:mechanica/controller/base_controller.dart';
+import 'package:dio/dio.dart';
+import 'auth_repo.dart';
 
 class AuthController extends BaseController {
   final ${repoClassName} ${repoName};
@@ -312,27 +336,27 @@ class AuthController extends BaseController {
   Future<void> ${functionName}(${params}) async {
     setLoading(true);
     errorMsg = null;
-    try {
-      final response = await callApi(
-        () => ${repoName}.${functionName}Repo(${paramNames}),
-      );
-      if (response == null) {
-        errorMsg = AppErrors.serverError;
-        return;
-      }
-      if (response.statusCode == 200 && response.data["type"] == "success") {
-        final data = response.data["data"];
-        // TODO: Handle successful response data
-        update();
-      } else {
-        errorMsg = response.data["message"] ?? "Unexpected error occurred";
-        update();
-      }
-    } catch (e) {
-      errorMsg = e.toString();
+    
+    final result = await callApi<Response>(
+      () => ${repoName}.${functionName}Repo(${paramNames}),
+    );
+    
+    setLoading(false);
+    
+    if (!result.isSuccess) {
+      errorMsg = result.errorMessage ?? AppErrors.generalError;
       update();
-    } finally {
-      setLoading(false);
+      return;
+    }
+    
+    final response = result.data;
+    if (response?.data["type"] == "success") {
+      final data = response?.data["data"];
+      // TODO: Handle successful response data
+      update();
+    } else {
+      errorMsg = response?.data["message"] ?? AppErrors.generalError;
+      update();
     }
   }
 
@@ -346,12 +370,13 @@ class AuthController extends BaseController {
 function generateControllerForFolder(folderName, apis) {
   const className = toPascalCase(folderName) + 'Controller';
   const repoName = toSmallCamelCase(folderName) + 'Repo';
-  const repoClassName = toPascalCase(folderName) + 'Repository';
+  const repoClassName = toPascalCase(folderName) + 'Repo';
   
   let code = `import 'package:get/get.dart';
-import 'package:hudood/constants/app_errors.dart';
-import 'package:hudood/controllers/base_controller.dart';
-import '${toSmallCamelCase(folderName)}_repository.dart';
+import 'package:mechanica/constants/app_errors.dart';
+import 'package:mechanica/controller/base_controller.dart';
+import 'package:dio/dio.dart';
+import '${toSmallCamelCase(folderName)}_repo.dart';
 
 class ${className} extends BaseController {
   final ${repoClassName} ${repoName};
@@ -388,27 +413,27 @@ class ${className} extends BaseController {
   Future<void> ${functionName}(${params}) async {
     setLoading(true);
     errorMsg = null;
-    try {
-      final response = await callApi(
-        () => ${repoName}.${functionName}Repo(${paramNames}),
-      );
-      if (response == null) {
-        errorMsg = AppErrors.serverError;
-        return;
-      }
-      if (response.statusCode == 200 && response.data["type"] == "success") {
-        final data = response.data["data"];
-        // TODO: Handle successful response data
-        update();
-      } else {
-        errorMsg = response.data["message"] ?? "Unexpected error occurred";
-        update();
-      }
-    } catch (e) {
-      errorMsg = e.toString();
+    
+    final result = await callApi<Response>(
+      () => ${repoName}.${functionName}Repo(${paramNames}),
+    );
+    
+    setLoading(false);
+    
+    if (!result.isSuccess) {
+      errorMsg = result.errorMessage ?? AppErrors.generalError;
       update();
-    } finally {
-      setLoading(false);
+      return;
+    }
+    
+    final response = result.data;
+    if (response?.data["type"] == "success") {
+      final data = response?.data["data"];
+      // TODO: Handle successful response data
+      update();
+    } else {
+      errorMsg = response?.data["message"] ?? AppErrors.generalError;
+      update();
     }
   }
 
@@ -420,12 +445,13 @@ class ${className} extends BaseController {
 }
 
 function generateRepositoryForFolder(folderName, apis) {
-  const className = toPascalCase(folderName) + 'Repository';
+  const className = toPascalCase(folderName) + 'Repo';
   
   let code = `import 'dart:convert';
 import 'package:dio/dio.dart';
-import 'package:hudood/constants/app_urls.dart';
-import 'package:hudood/data/apis/api_client.dart';
+import 'package:mechanica/constants/app_urls.dart';
+import 'package:mechanica/data/apis/api_client.dart';
+import 'package:mechanica/data/models/network/api_response_model.dart';
 
 class ${className} {
   final ApiClient apiClient;
@@ -459,11 +485,11 @@ ${bodyObj}
     });`;
     }
     
-    let apiMethod = 'getData';
-    if (method === 'post') apiMethod = 'postData';
-    else if (method === 'put') apiMethod = 'putData';
-    else if (method === 'delete') apiMethod = 'deleteData';
-    else if (method === 'patch') apiMethod = 'patchData';
+    let apiMethod = 'get';
+    if (method === 'post') apiMethod = 'post';
+    else if (method === 'put') apiMethod = 'put';
+    else if (method === 'delete') apiMethod = 'delete';
+    else if (method === 'patch') apiMethod = 'patch';
     
     let cleanName = toCleanVariableName(api.name);
     if (!cleanName) {
@@ -483,7 +509,7 @@ ${bodyObj}
     const authParam = api.config?.isOpenApi === true ? '\n      requiresAuth: false,' : '';
     
     code += `  // ${api.name} - ${api.method} ${cleanedUrl}
-  Future<Response> ${functionName}Repo(${params}) async{${bodyJson}
+  Future<ApiResponse<Response>> ${functionName}Repo(${params}) async {${bodyJson}
     return await apiClient.${apiMethod}(
       AppUrls.${urlConstant},${api.bodyKeys.length > 0 ? '\n      body: data,' : ''}${authParam}
     );
@@ -570,7 +596,7 @@ app.post('/upload', upload.single('collection'), (req, res) => {
   }
 });
 
-app.post('/generate', (req, res) => {
+app.post('/generate', async (req, res) => {
   try {
     const { apis } = req.body;
     
@@ -594,22 +620,370 @@ app.post('/generate', (req, res) => {
 
     const generatedFiles = {};
     
-    generatedFiles['base_controller.dart'] = `import 'package:dio/src/response.dart' show Response;
-import 'package:get/get.dart' hide Response;
-import 'package:hudood/controllers/api_controller.dart';
+    // Core files
+    generatedFiles['core/base_controller.dart'] = `import 'package:get/get.dart' hide Response;
+import 'package:mechanica/controller/api_controller.dart';
+import 'package:mechanica/data/models/network/api_response_model.dart';
 
-class BaseController extends GetxController {
+abstract class BaseController extends GetxController {
   ApiController get apiController => Get.find<ApiController>();
 
-  Future<Response?> callApi(Future<Response> Function() apiCall) {
+  Future<ApiResponse<T>> callApi<T>(Future<ApiResponse<T>> Function() apiCall) {
     return apiController.safeApiCall(apiCall);
   }
 }
 `;
     
-    const appUrlsCode = generateAppUrlsFile(apis);
-    generatedFiles['app_urls.dart'] = appUrlsCode;
+    generatedFiles['core/api_controller.dart'] = `import 'package:flutter/material.dart';
+import 'package:get/get.dart' hide Response;
+import 'package:mechanica/constants/app_colors.dart';
+import 'package:mechanica/constants/app_errors.dart';
+import 'package:mechanica/constants/app_routes.dart';
+import 'package:mechanica/controller/auth_controller.dart';
+import 'package:mechanica/data/models/network/api_response_model.dart';
+
+class ApiController extends GetxController {
+  final AuthController authController;
+
+  ApiController({required this.authController});
+
+  Future<ApiResponse<T>> safeApiCall<T>(
+    Future<ApiResponse<T>> Function() apiCall,
+  ) async {
+    final result = await apiCall();
+
+    if (!result.isSuccess && result.forceLogout) {
+      await _handleForceLogout();
+    }
+
+    return result;
+  }
+
+  Future<void> _handleForceLogout() async {
+    await authController.clearSession();
+    if (Get.currentRoute != AppRoutes.login) {
+      Get.offAllNamed(AppRoutes.login);
+      if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+
+      Future.microtask(
+        () => Get.snackbar(
+          "Error",
+          AppErrors.unauthorized,
+          backgroundColor: AppColors.warning,
+          icon: const Icon(Icons.lock_outline, color: Colors.white),
+          colorText: Colors.white,
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
+  }
+}
+`;
+
+    generatedFiles['core/api_client.dart'] = `import 'dart:async';
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:get/get.dart' hide Response;
+import 'package:mechanica/constants/app_errors.dart';
+import 'package:mechanica/constants/app_urls.dart';
+import 'package:mechanica/constants/storage_keys.dart';
+import 'package:mechanica/controller/services/app_meta_service.dart';
+import 'package:mechanica/data/models/network/api_response_model.dart';
+import 'package:mechanica/data/models/network/custom_api_exception.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+class ApiClient {
+  late Dio _dio;
+  final FlutterSecureStorage storage;
+  Completer<void>? _refreshCompleter;
+
+  ApiClient({required this.storage}) {
+    _dio = _createDio();
+  }
+
+  Dio _createDio() {
+    final meta = Get.find<AppMetaService>();
+
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: AppUrls.baseApiUrl,
+        connectTimeout: const Duration(seconds: 10),
+        sendTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        validateStatus: (s) => s != null && s >= 200 && s < 400,
+        headers: {
+          "Content-Type": "application/json",
+          "X-App-Version": meta.version,
+          "X-App-Build-Number": meta.build,
+        },
+      ),
+    );
+
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          if (options.extra['requiresAuth'] != false) {
+            final token = await storage.read(key: StorageKeys.accessToken);
+            if (token?.isNotEmpty == true) {
+              options.headers['Authorization'] = 'Bearer $token';
+            }
+          }
+          handler.next(options);
+        },
+        onError: (error, handler) async {
+          if (error.response?.statusCode == 498 &&
+              error.requestOptions.extra['retry'] != true) {
+            try {
+              final response = await _retryWithRefreshToken(
+                error.requestOptions,
+              );
+              return handler.resolve(response);
+            } catch (_) {
+              return handler.reject(
+                DioException(
+                  requestOptions: error.requestOptions,
+                  error: CustomApiException(statusCode: 401, forceLogout: true),
+                ),
+              );
+            }
+          }
+
+          _logToSentry(error);
+          handler.next(error);
+        },
+      ),
+    );
+
+    return dio;
+  }
+
+  Future<ApiResponse<Response>> get(String uri, {bool requiresAuth = true}) =>
+      _safeCall(
+        () => _dio.get(
+          uri,
+          options: Options(extra: {'requiresAuth': requiresAuth}),
+        ),
+      );
+
+  Future<ApiResponse<Response>> post(
+    String uri, {
+    dynamic body,
+    bool requiresAuth = true,
+  }) =>
+      _safeCall(
+        () => _dio.post(
+          uri,
+          data: body,
+          options: Options(extra: {'requiresAuth': requiresAuth}),
+        ),
+      );
+
+  Future<ApiResponse<Response>> put(
+    String uri, {
+    dynamic body,
+    bool requiresAuth = true,
+  }) =>
+      _safeCall(
+        () => _dio.put(
+          uri,
+          data: body,
+          options: Options(extra: {'requiresAuth': requiresAuth}),
+        ),
+      );
+
+  Future<ApiResponse<Response>> delete(
+    String uri, {
+    bool requiresAuth = true,
+  }) =>
+      _safeCall(
+        () => _dio.delete(
+          uri,
+          options: Options(extra: {'requiresAuth': requiresAuth}),
+        ),
+      );
+
+  Future<ApiResponse<Response>> patch(
+    String uri, {
+    dynamic body,
+    bool requiresAuth = true,
+  }) =>
+      _safeCall(
+        () => _dio.patch(
+          uri,
+          data: body,
+          options: Options(extra: {'requiresAuth': requiresAuth}),
+        ),
+      );
+
+  Future<ApiResponse<Response>> _safeCall(
+    Future<Response> Function() request,
+  ) async {
+    try {
+      final response = await request();
+
+      if (response.statusCode == 401) {
+        return const ApiResponse.error(
+          errorMessage: AppErrors.unauthorized,
+          statusCode: 401,
+          forceLogout: true,
+        );
+      }
+
+      if (response.data?['type'] == 'error') {
+        return ApiResponse.error(
+          errorMessage: response.data?['message'] ?? AppErrors.generalError,
+          statusCode: response.statusCode,
+        );
+      }
+
+      return ApiResponse.success(response);
+    } on DioException catch (e) {
+      if (e.error is CustomApiException) {
+        final ex = e.error as CustomApiException;
+        return ApiResponse.error(
+          errorMessage: AppErrors.unauthorized,
+          statusCode: ex.statusCode,
+          forceLogout: ex.forceLogout,
+        );
+      }
+
+      return ApiResponse.error(
+        errorMessage: _mapDioError(e),
+        statusCode: e.response?.statusCode,
+      );
+    } on SocketException {
+      return const ApiResponse.error(errorMessage: AppErrors.noInternet);
+    } catch (e, st) {
+      Sentry.captureException(e, stackTrace: st);
+      return const ApiResponse.error(errorMessage: AppErrors.generalError);
+    }
+  }
+
+  String _mapDioError(DioException e) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.sendTimeout:
+        return AppErrors.timeout;
+      case DioExceptionType.connectionError:
+        return AppErrors.serverError;
+      default:
+        return AppErrors.generalError;
+    }
+  }
+
+  Future<Response> _retryWithRefreshToken(RequestOptions requestOptions) async {
+    _refreshCompleter ??= Completer<void>();
+    if (_refreshCompleter!.isCompleted) {
+      await _refreshCompleter!.future;
+      return _dio.fetch(requestOptions);
+    }
+
+    try {
+      final refreshToken = await storage.read(key: StorageKeys.refreshToken);
+
+      if (refreshToken?.isEmpty ?? true) {
+        throw CustomApiException(statusCode: 401, forceLogout: true);
+      }
+
+      final response = await _dio.request(
+        requestOptions.path,
+        data: requestOptions.data,
+        options: Options(
+          method: requestOptions.method,
+          headers: {'X-Refresh-Token': refreshToken},
+          extra: {'retry': true},
+        ),
+      );
+
+      await storage.write(
+        key: StorageKeys.accessToken,
+        value: response.headers.value('X-New-Access-Token'),
+      );
+
+      await storage.write(
+        key: StorageKeys.refreshToken,
+        value: response.headers.value('X-New-Refresh-Token'),
+      );
+
+      _refreshCompleter!.complete();
+      return response;
+    } catch (e) {
+      _refreshCompleter!.completeError(e);
+      rethrow;
+    } finally {
+      _refreshCompleter = null;
+    }
+  }
+
+  void _logToSentry(DioException e) {
+    Sentry.captureException(e, stackTrace: e.stackTrace);
+  }
+}
+`;
     
+    // Models
+    generatedFiles['models/api_response_model.dart'] = `class ApiResponse<T> {
+  final T? data;
+  final String? errorMessage;
+  final int? statusCode;
+  final bool forceLogout;
+
+  const ApiResponse.success(this.data)
+      : errorMessage = null,
+        statusCode = null,
+        forceLogout = false;
+
+  const ApiResponse.error({
+    required this.errorMessage,
+    this.statusCode,
+    this.forceLogout = false,
+  }) : data = null;
+
+  bool get isSuccess => data != null;
+}
+`;
+
+    generatedFiles['models/response_model.dart'] = `class ResponseModel {
+  final bool _isSuccess;
+  final String _message;
+  final dynamic _data;
+  
+  ResponseModel(this._isSuccess, this._message, [this._data]);
+
+  String get message => _message;
+  bool get isSuccess => _isSuccess;
+  dynamic get data => _data;
+
+  Map<String, dynamic> toJson() => {
+        "isSuccess": _isSuccess,
+        "message": _message,
+        "data": _data,
+      };
+}
+`;
+
+    generatedFiles['models/custom_api_exception.dart'] = `class CustomApiException implements Exception {
+  final int statusCode;
+  final bool forceLogout;
+
+  CustomApiException({
+    required this.statusCode,
+    this.forceLogout = false,
+  });
+
+  @override
+  String toString() => 'CustomApiException(statusCode: \$statusCode, forceLogout: \$forceLogout)';
+}
+`;
+
+    // App URLs
+    const appUrlsCode = generateAppUrlsFile(apis);
+    generatedFiles['constants/app_urls.dart'] = appUrlsCode;
+    
+    // Controllers and Repositories
     Object.keys(folders).forEach(folderName => {
       const folderApis = folders[folderName];
       
@@ -626,20 +1000,51 @@ class BaseController extends GetxController {
         : `${toSmallCamelCase(folderName)}_controller.dart`;
         
       const repositoryFileName = isAuthFolder
-        ? 'auth_repository.dart'
-        : `${toSmallCamelCase(folderName)}_repository.dart`;
+        ? 'auth_repo.dart'
+        : `${toSmallCamelCase(folderName)}_repo.dart`;
       
-      generatedFiles[controllerFileName] = controllerCode;
-      generatedFiles[repositoryFileName] = repositoryCode;
+      generatedFiles[`controllers/${controllerFileName}`] = controllerCode;
+      generatedFiles[`repositories/${repositoryFileName}`] = repositoryCode;
     });
     
     const generatedCount = Object.keys(folders).length;
     
-    res.json({
-      success: true,
-      files: generatedFiles,
-      message: `Generated ${generatedCount} controller(s), ${generatedCount} repository(ies), base_controller.dart, and app_urls.dart`
+    // Create ZIP file
+    const timestamp = Date.now();
+    const zipFileName = `zerostate_generated_${timestamp}.zip`;
+    const zipPath = path.join(__dirname, 'uploads', zipFileName);
+    
+    const output = fs.createWriteStream(zipPath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    
+    output.on('close', () => {
+      console.log(`ZIP created: ${archive.pointer()} bytes`);
+      
+      // Send ZIP file
+      res.download(zipPath, zipFileName, (err) => {
+        if (err) {
+          console.error('Download error:', err);
+        }
+        // Clean up ZIP file after download
+        fs.unlink(zipPath, (unlinkErr) => {
+          if (unlinkErr) console.error('Cleanup error:', unlinkErr);
+        });
+      });
     });
+    
+    archive.on('error', (err) => {
+      throw err;
+    });
+    
+    archive.pipe(output);
+    
+    // Add all files to ZIP with proper folder structure
+    Object.keys(generatedFiles).forEach(filePath => {
+      archive.append(generatedFiles[filePath], { name: filePath });
+    });
+    
+    archive.finalize();
+    
   } catch (error) {
     console.error('Error generating code:', error);
     res.status(500).json({ error: error.message });
