@@ -1,0 +1,74 @@
+
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:hudood/constants/app_urls.dart';
+import 'package:hudood/data/apis/api_client.dart';
+
+class AuthRepo {
+  final ApiClient apiClient;
+
+  AuthRepo({required this.apiClient});
+  Future<Response> googleLogin(String idToken) async {
+    final data = jsonEncode({"id_token": idToken});
+    return await apiClient.postData(
+      AppUrls.googleLoginApiUrl,
+      body: data,
+      requiresAuth: false,
+    );
+  }
+
+  Future<Response> login(String email, String password) async {
+    final data = jsonEncode({
+      "email": email,
+      "password": password,
+    });
+
+    return await apiClient.postData(
+      AppUrls.loginApiUrl,
+      body: data,
+      requiresAuth: false,
+    );
+  }
+
+  Future<Response> register(String name, String email, String mobile,
+      String password, String confirmPassword) async {
+    final data = jsonEncode({
+      "name": name,
+      "email": email,
+      "mobile": mobile,
+      "password": password,
+      "confirmPassword": confirmPassword,
+    });
+    return await apiClient.postData(
+      AppUrls.registerApiUrl,
+      body: data,
+      requiresAuth: false,
+    );
+  }
+
+  Future<Response> changePassword(String currentPassword, String newPassword,
+      String confirmPassword) async {
+    final data = jsonEncode({
+      "currentPassword": currentPassword,
+      "newPassword": newPassword,
+      "confirmPassword": confirmPassword,
+    });
+
+    return await apiClient.postData(
+      AppUrls.changePasswordApiUrl,
+      body: data,
+    );
+  }
+
+  Future<Response> forgotPassword(String emailId) async {
+    final data = jsonEncode({
+      "email": emailId,
+    });
+
+    return await apiClient.postData(
+      AppUrls.forgotPasswordApiUrl,
+      body: data,
+    );
+  }
+}

@@ -1,0 +1,41 @@
+
+  void setLoading(bool val) {
+    isLoading = val;
+    update();
+  }
+
+  @override
+  void onInit() {
+    super.onInit();
+    fetchHomeData();
+  }
+
+  Future<void> fetchHomeData() async {
+    setLoading(true);
+    errorMessage = null;
+
+    try {
+      final response = await apiController.safeApiCall(
+        () => homeRepo.getHomeDataRepo(),
+      );
+
+      if (response == null) {
+        errorMessage = AppErrors.serverError;
+        return;
+      }
+
+      if (response.statusCode == 200 && response.data["type"] == "success") {
+        final data = response.data["data"]; 
+
+        update();
+      } else {
+        errorMessage = response.data["message"] ?? "Unexpected error occurred";
+        update();
+      }
+    } catch (e) {
+      errorMessage = e.toString();
+      update();
+    } finally {
+      setLoading(false);
+    }
+  }

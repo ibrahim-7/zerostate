@@ -11,7 +11,7 @@
     <!-- Header -->
     <div class="header">
       <h1>🚀 ZeroState</h1>
-      <p>Transform your Postman collections into production-ready Flutter GetX API layers with repositories, controllers, and response models following your project structure.</p>
+      <p>Transform your Postman collections into production-ready Flutter GetX Controllers and Repositories.</p>
     </div>
 
     <!-- Top Grid Section -->
@@ -23,15 +23,6 @@
           <div class="upload-icon-small">📄</div>
           <p>Drop JSON or click to browse</p>
           <input type="file" id="fileInput" class="file-input" accept=".json" />
-        </div>
-      </div>
-
-      <!-- View Structure -->
-      <div class="grid-card clickable-card" onclick="openStructureView()">
-        <h3>📋 View Code Structure</h3>
-        <div class="info-area">
-          <div class="info-icon">👁️</div>
-          <p>Click to view sample code files</p>
         </div>
       </div>
 
@@ -68,7 +59,7 @@
       <div class="grid-card generate-card hidden" id="generateCard">
         <h3>✨ Generate Code</h3>
         <div class="generate-area">
-          <p>Configure your APIs below and generate your GetX files</p>
+          <p>Configure your APIs below and generate Controller & Repository files</p>
           <button class="btn btn-generate" onclick="generateCode()">Generate GetX Code</button>
         </div>
       </div>
@@ -94,4 +85,4 @@
 
   <script src="app.js"></script>
 </body>
-</html>
+</html> 

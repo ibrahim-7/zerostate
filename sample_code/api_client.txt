@@ -1,1 +1,388 @@
+import 'dart:async';
+import 'dart:io';
 
+import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:get/get.dart' hide Response;
+import 'package:hudood/constants/app_errors.dart';
+import 'package:hudood/constants/app_urls.dart';
+import 'package:hudood/constants/storage_keys.dart';
+import 'package:hudood/controllers/services/app_meta_service.dart';
+import 'package:hudood/data/models/body/custom_api_exception.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+class ApiClient {
+  late Dio _dio;
+  final FlutterSecureStorage storage;
+  Completer<void>? _refreshCompleter;
+
+  ApiClient({required this.storage}) {
+    _dio = _createDio();
+  }
+
+  Dio _createDio() {
+    final meta = Get.find<AppMetaService>();
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: AppUrls.baseApiUrl,
+        connectTimeout: const Duration(seconds: 10),
+        sendTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        headers: {
+          "Content-Type": "application/json",
+          'X-App-Version': meta.version,
+          'X-App-Build-Number': meta.build,
+        },
+        validateStatus: (status) =>
+            status != null && status >= 200 && status < 400,
+      ),
+    );
+
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          final requiresAuth = options.extra['requiresAuth'] != false;
+
+          if (requiresAuth) {
+            final token = await storage.read(key: StorageKeys.accessToken);
+            if (token?.isNotEmpty == true) {
+              options.headers['Authorization'] = 'Bearer $token';
+            }
+          }
+
+          final deviceId = await storage.read(key: StorageKeys.deviceId);
+          if (deviceId?.isNotEmpty == true) {
+            options.headers['X-Device-Id'] = deviceId;
+          }
+
+          handler.next(options);
+        },
+        onError: (error, handler) async {
+          final statusCode = error.response?.statusCode;
+
+          // 🔁 RETRY ONLY ON 498
+          if (statusCode == 498 &&
+              error.requestOptions.extra['retry'] != true) {
+            try {
+              final response =
+                  await _retryWithRefreshToken(error.requestOptions);
+              return handler.resolve(response);
+            } catch (_) {
+              return handler.reject(
+                DioException(
+                  requestOptions: error.requestOptions,
+                  error: CustomApiException(
+                    statusCode: 401,
+                    forceLogout: true,
+                  ),
+                  type: DioExceptionType.badResponse,
+                ),
+              );
+            }
+          }
+
+          // 🚫 401 = force logout, NO retry
+          if (statusCode == 401) {
+            return handler.reject(
+              DioException(
+                requestOptions: error.requestOptions,
+                error: CustomApiException(
+                  statusCode: 401,
+                  forceLogout: true,
+                ),
+                response: error.response,
+                type: DioExceptionType.badResponse,
+              ),
+            );
+          }
+
+          // 🔥 reset broken connection
+          if (error.type == DioExceptionType.connectionError ||
+              error.error is HttpException) {
+            _resetClient();
+            return handler.reject(error);
+          }
+
+          _logToSentry(error);
+          handler.next(error);
+        },
+      ),
+    );
+
+    return dio;
+  }
+
+  void _resetClient() {
+    _dio.close(force: true);
+    _dio = _createDio();
+  }
+
+  // ---------------------------------------------------------------------------
+  // RETRY SAME REQUEST WITH REFRESH TOKEN (NO SEPARATE API)
+  // ---------------------------------------------------------------------------
+
+  Future<Response> _retryWithRefreshToken(
+    RequestOptions requestOptions,
+  ) async {
+    if (_refreshCompleter != null) {
+      await _refreshCompleter!.future;
+      return _retryOriginalRequest(requestOptions);
+    }
+
+    _refreshCompleter = Completer<void>();
+
+    try {
+      final refreshToken = await storage.read(key: StorageKeys.refreshToken);
+
+      if (refreshToken?.isEmpty ?? true) {
+        throw CustomApiException(statusCode: 401, forceLogout: true);
+      }
+
+      final isGet = requestOptions.method.toUpperCase() == 'GET';
+
+      final response = await _dio.request(
+        requestOptions.path,
+        data: isGet ? null : requestOptions.data,
+        queryParameters: requestOptions.queryParameters,
+        options: Options(
+          method: requestOptions.method,
+          headers: {
+            ...requestOptions.headers,
+            'X-Refresh-Token': refreshToken,
+          },
+          extra: {
+            ...requestOptions.extra,
+            'retry': true,
+          },
+        ),
+      );
+
+      // ✅ backend sends new tokens in SAME response
+      final newAccessToken = response.headers.value('X-New-Access-Token');
+      final newRefreshToken = response.headers.value('X-New-Refresh-Token');
+
+      if (newAccessToken?.isNotEmpty == true) {
+        await storage.write(
+          key: StorageKeys.accessToken,
+          value: newAccessToken,
+        );
+      }
+
+      if (newRefreshToken?.isNotEmpty == true) {
+        await storage.write(
+          key: StorageKeys.refreshToken,
+          value: newRefreshToken,
+        );
+      }
+
+      _refreshCompleter?.complete();
+      _refreshCompleter = null;
+
+      return response;
+    } catch (e) {
+      _refreshCompleter?.completeError(e);
+      _refreshCompleter = null;
+      rethrow;
+    }
+  }
+
+  Future<Response> _retryOriginalRequest(
+    RequestOptions requestOptions,
+  ) async {
+    final token = await storage.read(key: StorageKeys.accessToken);
+    final isGet = requestOptions.method.toUpperCase() == 'GET';
+
+    return _dio.request(
+      requestOptions.path,
+      data: isGet ? null : requestOptions.data,
+      queryParameters: requestOptions.queryParameters,
+      options: Options(
+        method: requestOptions.method,
+        headers: {
+          ...requestOptions.headers,
+          if (token?.isNotEmpty == true) 'Authorization': 'Bearer $token',
+        },
+        extra: {
+          ...requestOptions.extra,
+          'retry': true,
+        },
+      ),
+    );
+  }
+
+  void _logToSentry(DioException error) {
+    final headers = Map<String, dynamic>.from(error.requestOptions.headers)
+      ..remove('Authorization')
+      ..remove('X-Refresh-Token');
+
+    Sentry.captureException(
+      error,
+      stackTrace: error.stackTrace,
+      withScope: (scope) {
+        scope.setTag('layer', 'api');
+        scope.setTag('method', error.requestOptions.method);
+        scope.setContexts('request', {
+          'path': error.requestOptions.path,
+          'query': error.requestOptions.queryParameters,
+          'headers': headers,
+        });
+        scope.setContexts('response', {
+          'statusCode': error.response?.statusCode,
+          'data': error.response?.data,
+        });
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // PUBLIC API (UNCHANGED)
+  // ---------------------------------------------------------------------------
+
+  Future<Response> getData(
+    String uri, {
+    bool requiresAuth = true,
+  }) =>
+      _safeCall(
+        () => _dio.get(
+          uri,
+          options: Options(
+            extra: {'requiresAuth': requiresAuth},
+          ),
+        ),
+        uri,
+      );
+
+  Future<Response> postData(
+    String uri, {
+    dynamic body,
+    Map<String, dynamic>? headers,
+    bool requiresAuth = true,
+  }) =>
+      _safeCall(
+        () => _dio.post(
+          uri,
+          data: body,
+          options: Options(
+            headers: headers,
+            extra: {'requiresAuth': requiresAuth},
+          ),
+        ),
+        uri,
+      );
+
+  Future<Response> putData(
+    String uri, {
+    dynamic body,
+    Map<String, dynamic>? headers,
+    bool requiresAuth = true,
+  }) =>
+      _safeCall(
+        () => _dio.put(
+          uri,
+          data: body,
+          options: Options(
+            headers: headers,
+            extra: {'requiresAuth': requiresAuth},
+          ),
+        ),
+        uri,
+      );
+
+  Future<Response> deleteData(
+    String uri, {
+    Map<String, dynamic>? headers,
+    bool requiresAuth = true,
+  }) =>
+      _safeCall(
+        () => _dio.delete(
+          uri,
+          options: Options(
+            headers: headers,
+            extra: {'requiresAuth': requiresAuth},
+          ),
+        ),
+        uri,
+      );
+
+  Future<Response> _safeCall(
+    Future<Response> Function() request,
+    String uri,
+  ) async {
+    try {
+      return await request();
+    } on SocketException {
+      return _noInternetResponse(uri);
+    } on DioException catch (e) {
+      if (e.error is CustomApiException &&
+          (e.error as CustomApiException).forceLogout == true) {
+        rethrow;
+      }
+      return _handleDioError(uri, e);
+    } catch (e, st) {
+      Sentry.captureException(e, stackTrace: st);
+      return _errorResponse(uri);
+    }
+  }
+
+  Response _handleDioError(String uri, DioException e) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.sendTimeout:
+        return _timeoutResponse(uri);
+
+      case DioExceptionType.connectionError:
+        return _connectionErrorResponse(uri);
+
+      case DioExceptionType.badResponse:
+        final statusCode = e.response?.statusCode ?? 500;
+        final message = e.response?.data?['message'] ?? 'Server error';
+        return Response(
+          requestOptions: e.requestOptions,
+          statusCode: statusCode,
+          statusMessage: message,
+          data: {"type": "error", "message": message},
+        );
+
+      default:
+        return _errorResponse(uri);
+    }
+  }
+
+  Response _noInternetResponse(String uri) => Response(
+        requestOptions: RequestOptions(path: uri),
+        statusCode: 0,
+        statusMessage: AppErrors.noInternet,
+        data: {"type": "error", "message": AppErrors.noInternet},
+      );
+
+  Response _timeoutResponse(String uri) => Response(
+        requestOptions: RequestOptions(path: uri),
+        statusCode: 408,
+        statusMessage: "Timeout",
+        data: {
+          "type": "error",
+          "message": "Server took too long to respond.",
+        },
+      );
+
+  Response _connectionErrorResponse(String uri) => Response(
+        requestOptions: RequestOptions(path: uri),
+        statusCode: 502,
+        statusMessage: "Connection Error",
+        data: {
+          "type": "error",
+          "message": "Unable to reach server. Please try again later.",
+        },
+      );
+
+  Response _errorResponse(String uri) => Response(
+        requestOptions: RequestOptions(path: uri),
+        statusCode: 500,
+        statusMessage: AppErrors.generalError,
+        data: {
+          "type": "error",
+          "message": AppErrors.serverError,
+        },
+      );
+}

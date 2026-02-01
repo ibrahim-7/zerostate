@@ -516,6 +516,58 @@ body {
   margin: 0 auto 16px;
 }
 
+/* Parameter List Styles */
+.params-list {
+  margin-top: 12px;
+}
+
+.param-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  border-bottom: 1px solid #3a4556;
+}
+
+.param-item:last-child {
+  border-bottom: none;
+}
+
+.param-number {
+  color: #a0aec0;
+  min-width: 30px;
+  font-weight: 600;
+}
+
+.param-type {
+  color: #48bb78;
+  font-weight: 600;
+  min-width: 120px;
+}
+
+.param-separator {
+  color: #a0aec0;
+  margin: 0 8px;
+}
+
+.param-name {
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+/* Update body-keys title for better spacing */
+.body-keys-title {
+  color: #a0aec0;
+  font-size: 12px;
+  margin-bottom: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #3a4556;
+  padding-bottom: 8px;
+} 
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
@@ -539,4 +591,82 @@ body {
   .stat-row-grid {
     grid-template-columns: 1fr 1fr;
   }
+}
+.api-checkbox {
+  width: 20px;
+  height: 20px;
+  margin-right: 12px;
+  cursor: pointer;
+  accent-color: #667eea;
+}
+
+.api-card.selected {
+  border: 2px solid #667eea;
+  background: #f0f4ff;
+}
+
+.btn-delete-multi {
+  background: #f56565;
+  box-shadow: 0 4px 12px rgba(245, 101, 101, 0.4);
+}
+
+.btn-delete-multi:hover {
+  background: #e53e3e;
+  box-shadow: 0 6px 20px rgba(245, 101, 101, 0.5);
+}
+
+.bulk-actions {
+  margin-left: auto;
+}
+
+/* Parameter List Styles */
+.params-list {
+  margin-top: 12px;
+}
+
+.param-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  border-bottom: 1px solid #3a4556;
+}
+
+.param-item:last-child {
+  border-bottom: none;
+}
+
+.param-number {
+  color: #a0aec0;
+  min-width: 30px;
+  font-weight: 600;
+}
+
+.param-type {
+  color: #48bb78;
+  font-weight: 600;
+  min-width: 120px;
+}
+
+.param-separator {
+  color: #a0aec0;
+  margin: 0 8px;
+}
+
+.param-name {
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+.body-keys-title {
+  color: #a0aec0;
+  font-size: 12px;
+  margin-bottom: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #3a4556;
+  padding-bottom: 8px;
 }
